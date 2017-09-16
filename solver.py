@@ -148,11 +148,10 @@ creator.create("Individual", np.ndarray, fitness=creator.FitnessMax)
 toolbox = base.Toolbox()
 toolbox.register("attr_bool", random.randint, 0, 1)
 toolbox.register("mate", tools.cxUniform, indpb=0.5)
-toolbox.register("mutate", tools.mutFlipBit, indpb=0.1)
 toolbox.register("select", tools.selBest)
 
 if selection == 'uniform':
-    toolbox.register("selectParents", util.selParents, toolbox)
+    toolbox.register("selectParents", util.selectParents, toolbox)
 elif selection == 'tournament':
     toolbox.register("selectParents", tools.selTournament, tournsize=size)
 

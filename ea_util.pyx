@@ -28,7 +28,7 @@ global adjusting
 adjusting = 1
 global repair
 repair = 0
-
+global toolbox
 global ordering
 
 def setRepair(int r):
@@ -49,10 +49,6 @@ def setSeed(seed):
     random.seed(seed)
 
 
-def binomialMutate(N, p):
-    return np.random.binomial(N, p)
-
-
 def fitnessValue(individual):
     return individual.fitness.values[0]
 
@@ -60,6 +56,13 @@ def fitnessValue(individual):
 def powerDistribution(int n, float BETA):
     return reduce((lambda x, y: x + (y ** -BETA)), range(1, round(n/2)))
 
+
+def favourOffspring(parents, offspring, MU):
+    choice = (list(zip(parents, [0]*len(parents))) +
+              list(zip(offspring, [1]*len(offspring))))
+    choice.sort(key=lambda x: (fitnessValue(x[0]), x[1]), reverse=True)
+    return [x[0] for x in choice[:MU]]
+    
 
 def fmut(int N, float BETA):
     CB = powerDistribution(N, BETA)
@@ -69,7 +72,7 @@ def fmut(int N, float BETA):
     return draw
 
 
-def selParents(toolbox, individuals, k):
+def selectParents(toolbox, individuals, k):
     parents = [random.choice(individuals) for i in range(k)]
     return [toolbox.clone(ind) for ind in parents]
 
@@ -213,34 +216,27 @@ def evalKnapsack(int M,
         return float(np.dot(individual, values)/O),
     return 0,
 
-def llOffSpring(population, toolbox, LAMBDA, N):
-        offspring = []  # Copy old generators
-        binom = binomialMutate(N, LAMBDA/N)
-        numbers = list(range(0, N-1))
-        for i in range(round(LAMBDA)):
-            offspring.append(toolbox.clone(population[0]))
-            list100 = np.random.choice(numbers, binom)
-            for x in range(len(list100)):
-                index = list100[x]
-                offspring[i][index] = not offspring[i][index]
-            del offspring[i].fitness.values
-        nevals = len(offspring)
-        fitnesses = toolbox.map(toolbox.evaluate, offspring)
-        for ind, fit in zip(offspring, fitnesses):
-            ind.fitness.values = fit
-        bestOne = toolbox.select(offspring, 1)[0]
-        for j in range(round(LAMBDA)):
-            bestOneClone = toolbox.clone(bestOne)
-            parentClone = toolbox.clone(population[0])
-            toolbox.mateBest(parentClone, bestOneClone)
-            offspring[j] = parentClone
-            del offspring[j].fitness.values
-        return offspring, nevals
+
+def mut_l(individual, l):
+    bits = np.random.choice(list(range(len(individual))), l, replace=False)
+    for bit in bits:
+        individual[bit] = not individual[bit]
+    individual.fitness.values = toolbox.evaluate(individual)
+    return individual
 
 
-def lambdalambda(population, toolbox, int MU, int LAMBDA, int N, crossover,
-                 stats, hof, fast, int max_evals, float BETA):   
-    toolbox.register("mateBest", tools.cxUniform, indpb=1.0/LAMBDA)
+def cross_c(p1, p2, toolbox):
+    toolbox.mate(p1, p2)
+    p1.fitness.values = toolbox.evaluate(p1)
+    return p1
+
+
+def lambdalambda(population, toolbox, MU, LAMBDA, N, crossover,
+                 stats, hof, fast, max_evals, BETA):
+    x = toolbox.individual()
+    x.fitness.values = toolbox.evaluate(x)
+
+    LAMBDA = 1
 
     gen = 0
     logbook = tools.Logbook()
@@ -249,7 +245,7 @@ def lambdalambda(population, toolbox, int MU, int LAMBDA, int N, crossover,
     invalid_ind = [ind for ind in population if not ind.fitness.valid]
     fitness_count = len(invalid_ind)
     fitnesses = toolbox.map(toolbox.evaluate, invalid_ind)
-    
+
     for ind, fit in zip(invalid_ind, fitnesses):
         ind.fitness.values = fit
 
@@ -258,175 +254,144 @@ def lambdalambda(population, toolbox, int MU, int LAMBDA, int N, crossover,
 
     record = stats.compile(population) if stats else {}
     logbook.record(gen=0, nevals=len(invalid_ind), **record)
-    
+
     # Begin the generational process
-    while(fitness_count < max_evals):
-        parent = toolbox.clone(population[0])
-        offspring, nevals = llOffSpring(population, toolbox, LAMBDA, N)
-        fitness_count += nevals
+    while(fitness_count < max_evals and fitnessValue(hof[0]) < 1):
         gen += 1
+        k = LAMBDA
+        c = 1.0/k
+        p = LAMBDA/N
 
-        # Evaluate the individuals with an invalid fitness
-        invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
-        fitnesses = toolbox.map(toolbox.evaluate, invalid_ind)
-        fitness_count += len(invalid_ind)
+        toolbox.register("mate", tools.cxUniform, indpb=c)
 
-        for ind, fit in zip(invalid_ind, fitnesses):
-            ind.fitness.values = fit
+        # Mutation phase
+        ell = np.random.binomial(N, p)
+        X = [mut_l(toolbox.clone(x), ell) for i in range(LAMBDA)]
+        x_prime = max(X, key=lambda i: fitnessValue(i))
+        fitness_count += len(X)
+
+        # Crossover phase
+        Y = [cross_c(toolbox.clone(x), toolbox.clone(x_prime), toolbox) for i in range(LAMBDA)]
+        y = max(Y, key=lambda i: fitnessValue(i))
+
+        if fitnessValue(y) > fitnessValue(x):
+            x = y
+            LAMBDA = max([(LAMBDA/F), 1])
+        elif fitnessValue(y) == fitnessValue(x):
+            x = y
+            LAMBDA = min([(LAMBDA*F**0.25), N])
+        elif fitnessValue(y) < fitnessValue(x):
+            LAMBDA = min([(LAMBDA*F**0.25), N])
+
+        LAMBDA = int(LAMBDA)
+
+        population = [y]
+        record = stats.compile(population) if stats else {}
+        logbook.record(gen=gen, nevals=len(invalid_ind), **record)
 
         #  Update the hall of fame with the generated individuals
         if hof is not None:
+            hof.update([x])
+
+    return population, logbook
+
+
+def theory_GA(population, toolbox, int MU, int LAMBDA, int N, crossover, stats,
+          hof, fast, int max_evals, float BETA, selection):
+    gen = 0
+
+    # initialise logbook
+    logbook = tools.Logbook()
+    logbook.header = ['gen', 'nevals'] + (stats.fields if stats else [])
+
+    # initialise individuals fitness
+    eval_count = len(population)
+    fitnesses = toolbox.map(toolbox.evaluate, population)
+    for ind, fit in zip(population, fitnesses):
+        ind.fitness.values = fit
+
+    # initialise hall of fame
+    if hof is not None:
+        hof.update(population)
+
+    record = stats.compile(population) if stats else {}
+    logbook.record(gen=0, nevals=len(population), **record)
+
+    # Begin the generational process
+    while(eval_count < max_evals and fitnessValue(hof[0]) < 1):
+        gen += 1
+        if(fast):
+            alpha = fmut(N, BETA)
+            toolbox.register("mutate", tools.mutFlipBit, indpb=alpha/N)
+
+        #  Generate offspring
+        offspring = []
+
+        # if crossover is being used it is done before mutation
+        if crossover:
+            for i in range(LAMBDA):
+                p1, p2 = toolbox.selectParents(population, 2)
+                toolbox.mate(p1, p2)
+                offspring += [p1]
+        else:
+            offspring = [toolbox.selectParents(population, 1)[0] for i in range(LAMBDA)]
+
+        for off in offspring:
+            off, = toolbox.mutate(off)
+            del off.fitness.values
+
+        #  Evaluate the individuals with an invalid fitness
+        eval_count += len(offspring)
+        fitnesses = toolbox.map(toolbox.evaluate, offspring)
+        for ind, fit in zip(offspring, fitnesses):
+            ind.fitness.values = fit
+
+        # Update the hall of fame with the generated individuals
+        if hof is not None:
             hof.update(offspring)
-        population = toolbox.select(population+offspring, MU)
-        if adjusting != 0:
-            if(parent.fitness.values[0] >= population[0].fitness.values[0]):
-                LAMBDA = min(N, (LAMBDA * (math.pow(F, 0.25))))
-            else:
-                LAMBDA = round(max(1, (float(LAMBDA)/float(F))))
 
-            toolbox.register("mateBest", tools.cxUniform, indpb=1.0/LAMBDA)
-            toolbox.register("mutate", tools.mutFlipBit, indpb=(float(LAMBDA)/N))
+        # Select the next generation, favouring the offspring in the event
+        # of equal fitness values
+        if selection == 'plus':
+            population = favourOffspring(population, offspring, MU)
+        elif selection == 'comma':
+            population = toolbox.select(offspring, MU)
 
-        #  Append the current generation statistics to the logbook
+
+        # Append the current generation statistics to the logbook
         record = stats.compile(population) if stats else {}
-        logbook.record(gen=gen, nevals=len(invalid_ind) + nevals, **record)
+        logbook.record(gen=gen, nevals=len(offspring), **record)
 
     return population, logbook
 
 
 def plus(population, toolbox, int MU, int LAMBDA, int N, crossover, stats,
           hof, fast, int max_evals, float BETA):
-    gen = 0
-
-    # initialise logbook
-    logbook = tools.Logbook()
-    logbook.header = ['gen', 'nevals'] + (stats.fields if stats else [])
-
-    # initialise individuals fitness
-    eval_count = len(population)
-    fitnesses = toolbox.map(toolbox.evaluate, population)
-    for ind, fit in zip(population, fitnesses):
-        ind.fitness.values = fit
-
-    # initialise hall of fame
-    if hof is not None:
-        hof.update(population)
-
-    record = stats.compile(population) if stats else {}
-    logbook.record(gen=0, nevals=len(population), **record)
-
-    # Begin the generational process
-    while(eval_count < max_evals):
-        gen += 1
-        if(fast):
-            alpha = fmut(N, BETA)
-            toolbox.register("mutate", tools.mutFlipBit, indpb=alpha/N)
-
-        #  Generate offspring
-        offspring = []
-
-        # if crossover is being used it is done before mutation
-        if crossover:
-            p1, p2 = toolbox.selectParents(population, 2)
-            for i in range(math.ceil(LAMBDA/2.0)):
-                toolbox.mate(p1, p2)
-                offspring += [p1, p2]
-        else:
-            offspring = [toolbox.selectParents(population, 1)[0] for i in range(LAMBDA)]
-        
-        offspring = offspring[:LAMBDA]
-
-        for off in offspring:
-            off, = toolbox.mutate(off)
-            del off.fitness.values
-
-        #  Evaluate the individuals with an invalid fitness
-        eval_count += len(offspring)
-        fitnesses = toolbox.map(toolbox.evaluate, offspring)
-        for ind, fit in zip(offspring, fitnesses):
-            ind.fitness.values = fit
-
-        # Update the hall of fame with the generated individuals
-        if hof is not None:
-            hof.update(offspring)
-
-        population = toolbox.select(population+offspring, MU)
-
-        # Append the current generation statistics to the logbook
-        record = stats.compile(population) if stats else {}
-        logbook.record(gen=gen, nevals=len(offspring), **record)
-
-    return population, logbook
+    return theory_GA(population, toolbox, MU, LAMBDA, N, crossover, stats,
+          hof, fast, max_evals, BETA, 'plus')
 
 
 def comma(population, toolbox, int MU, int LAMBDA, int N, crossover, stats,
           hof, fast, int max_evals, float BETA):
-    gen = 0
+    return theory_GA(population, toolbox, MU, LAMBDA, N, crossover, stats,
+          hof, fast, max_evals, BETA, 'comma')
 
-    # initialise logbook
-    logbook = tools.Logbook()
-    logbook.header = ['gen', 'nevals'] + (stats.fields if stats else [])
 
-    # initialise individuals fitness
-    eval_count = len(population)
-    fitnesses = toolbox.map(toolbox.evaluate, population)
-    for ind, fit in zip(population, fitnesses):
-        ind.fitness.values = fit
-
-    # initialise hall of fame
-    if hof is not None:
-        hof.update(population)
-
-    record = stats.compile(population) if stats else {}
-    logbook.record(gen=0, nevals=len(population), **record)
-
-    # Begin the generational process
-    while(eval_count < max_evals):
-        gen += 1
-        if(fast):
-            alpha = fmut(N, BETA)
-            toolbox.register("mutate", tools.mutFlipBit, indpb=alpha/N)
-
-        #  Generate offspring
-        offspring = []
-
-        # if crossover is being used it is done before mutation
-        if crossover:
-            p1, p2 = toolbox.selectParents(population, 2)
-            for i in range(math.ceil(LAMBDA/2.0)):
-                toolbox.mate(p1, p2)
-                offspring += [p1, p2]
-        else:
-            offspring = [toolbox.selectParents(population, 1)[0] for i in range(LAMBDA)]
-        
-        offspring = offspring[:LAMBDA]
-
-        for off in offspring:
-            off, = toolbox.mutate(off)
-            del off.fitness.values
-
-        #  Evaluate the individuals with an invalid fitness
-        eval_count += len(offspring)
-        fitnesses = toolbox.map(toolbox.evaluate, offspring)
-        for ind, fit in zip(offspring, fitnesses):
-            ind.fitness.values = fit
-
-        # Update the hall of fame with the generated individuals
-        if hof is not None:
-            hof.update(offspring)
-
-        population = toolbox.select(offspring, MU)
-
-        # Append the current generation statistics to the logbook
-        record = stats.compile(population) if stats else {}
-        logbook.record(gen=gen, nevals=len(offspring), **record)
-
-    return population, logbook
-
+def favourDiversity(population, MU):
+    counts = []
+    for i in population:
+        count = 0
+        for j in population:
+            if list(i) == list(j):
+                count += 1
+        counts.append((i, len(population)/count))
+    counts.sort(key=lambda x: (fitnessValue(x[0]), x[1]), reverse=True)
+    return [i for i, _ in counts][:MU]
 
 
 def twoPlusOne(population, toolbox, int MU, int LAMBDA, int N, crossover,
                stats, hof, fast, int max_evals, float BETA):
+#    toolbox.register("mutate", tools.mutFlipBit, indpb=(1+math.sqrt(5))/(2*N))
     gen = 0
     logbook = tools.Logbook()
     logbook.header = ['gen', 'nevals'] + (stats.fields if stats else [])
@@ -444,58 +409,50 @@ def twoPlusOne(population, toolbox, int MU, int LAMBDA, int N, crossover,
     logbook.record(gen=0, nevals=len(invalid_ind), **record)
 
     # Begin the generational process
-    while(fitness_count < max_evals):
+    while(fitness_count < max_evals and fitnessValue(hof[0]) < 1):
         gen += 1
-        if (fitnessValue(population[0]) == fitnessValue(population[1])):
-            offspring = toolbox.clone(population[random.randint(0, 1)])
-            offspring2 = toolbox.clone(population[random.randint(0, 1)])
-            offspring, offspring2 = toolbox.mate(offspring, offspring2)
-            offspring, = toolbox.mutate(offspring)
-            del offspring.fitness.values
-            offspring.fitness.values = toolbox.evaluate(offspring)
-        elif (fitnessValue(population[0]) > fitnessValue(population[1])):
-            offspring = toolbox.clone(population[0])
-            offspring, = toolbox.mutate(offspring)
-            del offspring.fitness.values
-            offspring.fitness.values = toolbox.evaluate(offspring)
+        p1, p2 = [toolbox.clone(ind) for ind in population]
+        offspring = None
+        if (fitnessValue(p1) > fitnessValue(p2)):
+            offspring = p1
+        elif (fitnessValue(p2) > fitnessValue(p1)):
+            offspring = p2
         else:
-            offspring = toolbox.clone(population[1])
-            offspring, = toolbox.mutate(offspring)
-            del offspring.fitness.values
-            offspring.fitness.values = toolbox.evaluate(offspring)
+            #p1, p2 = toolbox.selectParents(population, 2)
+            toolbox.mate(p1, p2)
+            offspring = p1
+        offspring, = toolbox.mutate(offspring)
+        del offspring.fitness.values
+        offspring.fitness.values = toolbox.evaluate(offspring)
 
         offList = [offspring]
         # Update the hall of fame with the generated individuals
         if hof is not None:
             hof.update(offList)
 
-        # same fitness so tie break
-        if (fitnessValue(population[0]) == fitnessValue(population[1]) and
-                fitnessValue(population[0]) == fitnessValue(offList[0])):
-            # all identical so it doesnt matter which 2
-            if (list(population[0]) == list(population[1]) and
-                    list(population[0]) == list(offList[0])):
-                # population doesn't change
-                break
-            # offspring is unique
-            elif (list(population[0]) == list(population[1])):
-                population[1] = offList[0]
-        # different fitness so just select best
-        else:
-            population = toolbox.select(population+offList, MU)
+#        # same fitness so tie break
+#        if (all([fitnessValue(x) == fitnessValue(offspring) for x in population])):
+#            if (list(population[0]) != list(offspring) and
+#                list(population[1]) != list(offspring)):
+#                population[random.randint(0, 1)] = offspring
+#                
+#        # different fitness so just select best
+#        else:
+#            population = toolbox.select(population+offList, MU)
+        population = favourDiversity(population+offList, MU)
 
         #  Append the current generation statistics to the logbook
         record = stats.compile(population) if stats else {}
         logbook.record(gen=gen, nevals=len(invalid_ind), **record)
-        if max(logbook.select("max")) == 1.0:
-            break
 
         fitness_count += len(invalid_ind)
 
     return population, logbook
 
 
-def main(N, MU, LAMBDA, BETA, toolbox, crossover, fast, algorithm, max_evals):
+def main(N, MU, LAMBDA, BETA, t_box, crossover, fast, algorithm, max_evals):
+    global toolbox
+    toolbox = t_box
     population = toolbox.population(n=MU)
     hof = tools.HallOfFame(1, similar=np.array_equal)
     stats = tools.Statistics(lambda ind: ind.fitness.values)
@@ -503,6 +460,8 @@ def main(N, MU, LAMBDA, BETA, toolbox, crossover, fast, algorithm, max_evals):
     stats.register("std", np.std)
     stats.register("min", np.min)
     stats.register("max", np.max)
+    
+    toolbox.register("mutate", tools.mutFlipBit, indpb=1/N)
 
     pop, log = algorithm(population, toolbox, MU, LAMBDA, N, crossover, stats,
                          hof, fast, max_evals, BETA)
@@ -523,7 +482,7 @@ def printResults(hof, log, results_folder, f):
 #              " FAILURES:" + str(failures) +
               " Best:" + str(fitnessValue(hof[0])) +
               " Solution:1.0")
-#    print(result)
+    print(result)
 
 
 def oneMax(MU, LAMBDA, algorithm, fast, crossover, results_folder, toolbox, f,
@@ -594,6 +553,5 @@ def MKP(MU, LAMBDA, algorithm, fast, crossover, results_folder, toolbox, f,
                      creator.Individual, N, capacities, coefficients)
     toolbox.register("population", tools.initRepeat, list,
                      toolbox.individual)
-    toolbox.register("mutate", tools.mutFlipBit, indpb=1/N)
     pop, log, hof = main(N, MU, LAMBDA, BETA, toolbox, crossover, fast, algorithm, max_evals)
     printResults(hof, log, results_folder, f)
