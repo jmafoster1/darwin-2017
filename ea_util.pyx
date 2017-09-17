@@ -21,35 +21,10 @@ ctypedef np.float_t DTYPE_f
 
 global precision
 precision = 65536
-global F
-F = 2.5
-global adjusting
-adjusting = 1
-global repair
-repair = 0
 global toolbox
 global ordering
 global hof
 global stats
-
-
-def setRepair(int r):
-    global repair
-    repair = r
-
-
-def setF(float f):
-    global F
-    F = f
-
-
-def setAdjusting(int a):
-    global adjusting
-    adjusting = a
-
-
-def setSeed(seed):
-    random.seed(seed)
 
 
 def log(logbook, population, gen, nevals):
@@ -221,8 +196,9 @@ def evalKnapsack(int M,
                  np.ndarray[DTYPE_f, ndim=1] values,
                  np.ndarray[DTYPE_f, ndim=1] capacities,
                  np.ndarray[DTYPE_f, ndim=2] coefficients,
-                 np.ndarray[DTYPE_t, ndim=1] individual):
-    if repair == 1:
+                 np.ndarray[DTYPE_t, ndim=1] individual,
+                 repair):
+    if repair:
         individual = repairKnapsack(capacities, values, coefficients, N, M, individual)
     if validKnapsack(individual, capacities, coefficients):
         return float(np.dot(individual, values)/O),
@@ -237,10 +213,15 @@ def mut_l(individual, l):
     return individual
 
 
-def cross_c(p1, p2, toolbox):
-    toolbox.mate(p1, p2)
-    p1.fitness.values = toolbox.evaluate(p1)
-    return p1
+def cross_c(x, x_prime, c):
+    child = toolbox.individual()
+    for i in range(len(child)):
+        if np.random.rand() < c:
+            child[i] = x_prime[i]
+        else:
+            child[i] = x[i]
+    child.fitness.values = toolbox.evaluate(child)
+    return child
 
 
 def bestFitness(population):
@@ -254,7 +235,7 @@ def lambdalambda(options):
     
     x = toolbox.individual()
     x.fitness.values = toolbox.evaluate(x)
-    population= [x]
+    population = [x]
     LAMBDA = 1
     gen = 0
     eval_count = 1
@@ -269,8 +250,6 @@ def lambdalambda(options):
         c = 1.0/k
         p = LAMBDA/options['N']
 
-        toolbox.register("mate", tools.cxUniform, indpb=c)
-
         # Mutation phase
         ell = np.random.binomial(options['N'], p)
         X = [mut_l(toolbox.clone(x), ell) for i in range(LAMBDA)]
@@ -278,24 +257,25 @@ def lambdalambda(options):
         nevals += len(X)
 
         # Crossover phase
-        Y = [cross_c(toolbox.clone(x), toolbox.clone(x_prime), toolbox) for i in range(LAMBDA)]
+        Y = [cross_c(toolbox.clone(x), toolbox.clone(x_prime), c) for i in range(LAMBDA)]
         y = max(Y, key=lambda i: fitnessValue(i))
         nevals += len(Y)
 
         if fitnessValue(y) > fitnessValue(x):
             x = y
-            LAMBDA = max([(LAMBDA/F), 1])
+            LAMBDA = max([(LAMBDA/options['F']), 1])
         elif fitnessValue(y) == fitnessValue(x):
             x = y
-            LAMBDA = min([(LAMBDA*F**0.25), options['N']])
+            LAMBDA = min([(LAMBDA*(options['F']**0.25)), options['N']])
         elif fitnessValue(y) < fitnessValue(x):
-            LAMBDA = min([(LAMBDA*F**0.25), options['N']])
+            LAMBDA = min([(LAMBDA*(options['F']**0.25)), options['N']])
 
         LAMBDA = int(LAMBDA)
         eval_count += nevals
 
-        population = [y]
+        population = [x]
         log(logbook, population, gen, nevals)
+        print(logbook.stream)
 
     return population, logbook
 
@@ -394,6 +374,7 @@ def greedy(options):
 
 
 def main(options):
+    random.seed(options['seed'])
     creator.create("FitnessMax", base.Fitness, weights=(1.0, ))
     creator.create("Individual", np.ndarray, fitness=creator.FitnessMax)
     global toolbox
@@ -485,7 +466,7 @@ def MKP(options):
     ordering = [x[0] for x in sorted(list(enumerate(U)), key=lambda x: x[1])]
     
     toolbox.register("evaluate", evalKnapsack, M, N, O, values, capacities,
-                     coefficients)
+                     coefficients, options['repair'])
     toolbox.register("individual", generateKnapsack,
                      creator.Individual, N, capacities, coefficients)
     toolbox.register("population", tools.initRepeat, list,

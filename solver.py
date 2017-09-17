@@ -72,7 +72,7 @@ algorithms = {'plus': util.theory_GA,
 solvers = {'mkp': util.MKP, 'maxsat': util.maxSat, 'ising': util.ising,
            'onemax': util.oneMax}
 
-options = {'F': 2.5}
+options = {'F': 1.5}
 
 
 ##############################
@@ -119,7 +119,7 @@ if '-R' in opts and opts['p'] != 'mkp':
 if '-f' in opts and opts['-a'] not in ['plus', 'comma']:
     print('ERROR: the -f option is only valid for -a plus and -a comma')
     printHelp()
-if opts['-a'] == 'lambdalambda' and '-m' in opts or '-l' in opts:
+if opts['-a'] == 'lambdalambda' and ('-m' in opts or '-l' in opts):
     print('ERROR: cannot provide -m or -l options for -a lambdalambda')
     printHelp()
 
@@ -135,7 +135,13 @@ except ValueError:
     printHelp()
 
 try:
-    options['lambda'] = int(opts['-l']) if opts['-a'] != 'lambdalambda' else 'lambda'
+    if opts['-a'] == 'lambdalambda':
+        options['lambda'] = 'lambda'
+    elif opts['-a'] == 'greedy':
+        options['lambda'] = 1
+    else:
+        options['lambda'] = int(opts['-l'])
+    
 except ValueError:
     print('ERROR: the -l option must be an integer')
     printHelp()
@@ -176,7 +182,6 @@ if '-r' in opts:
 
 # Need to set random seed in util file as well
 random.seed(options['seed'])
-util.setSeed(options['seed'])
 
 # problem file
 if len(args) < 1:
