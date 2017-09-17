@@ -8,9 +8,9 @@ OPTIONS:
                    'ising', or 'maxsat'
     -f           : solve the problem using a Fast EA (or GA if -c is provided)
     -m* MU       : maintain a population of MU individuals
-                   (not required for '-a twoplusone')
+                   (not required for '-a greedy' or '-a lambdalambda')
     -l* LAMBDA   : generate LAMBDA children each generation
-                   (not required for '-a twoplusone')
+                   (not required for '-a greedy')
     -c           : apply crossover before mutation each generation
     -e EVALS     : the maximum number of fitness function evaluations before a
                    solution is presented, defaults to 10000
@@ -24,7 +24,7 @@ OPTIONS:
     -a* ALGORITHM: the algorithm to be used to solve the problem, one of either
                    'plus' for a (MU + LAMBDA) EA
                    'comma' for a (MU, LAMBDA) EA
-                   'twoplusone' for a greedy (2 + 1) EA
+                   'greedy' for a greedy (2 + 1) EA
                    'lambdalambda' for a 1 + (\lambda, \lambda) algorithm
     -r SEED      : a random SEED to get the algorithm started,
                    defaults to 100
@@ -32,7 +32,7 @@ OPTIONS:
                    self-adjusting variant of the algorithm - defaults to 1
     -F FLOAT     : used for '-a lambdalambda' - the F value for the
                    algorithm - defaults to 2.5
-    -R           : turn on the repair operator for -p MKP
+    -R           : turn on the repair operator for -p mkp
 
 ARGUMENTS:
     For each execution, the name of a file containing the problem specification
@@ -48,11 +48,6 @@ RESULTS:
 
 import random
 import os
-import numpy as np
-
-from deap import base
-from deap import creator
-from deap import tools
 
 import ea_util as util
 
@@ -70,6 +65,16 @@ def printHelp():
     sys.exit()
 
 
+algorithms = {'plus': util.theory_GA,
+              'comma': util.theory_GA,
+              'greedy': util.greedy,
+              'lambdalambda': util.lambdalambda}
+solvers = {'mkp': util.MKP, 'maxsat': util.maxSat, 'ising': util.ising,
+           'onemax': util.oneMax}
+
+options = {'F': 2.5}
+
+
 ##############################
 # help option
 if '-h' in opts:
@@ -79,91 +84,118 @@ mandatory = ['-p', '-S', '-a']
 if any([i not in opts for i in mandatory]):
     print('ERROR: please provide all required options')
     printHelp()
+if opts['-a'] not in algorithms.keys():
+    print('ERROR: invalid algorithm, -a option must be one of',
+          list(algorithms.keys()))
+    printHelp()
+if opts['-p'] not in solvers.keys():
+    print('ERROR: invalid problem, -p option must be one of',
+          list(solvers.keys()))
 if opts['-S'] == 'tournament' and '-s' not in opts:
     print('ERROR: please provide tournament size')
     printHelp()
-if opts['-a'] == 'twoplusone' and any([i in opts for i in ['-l', '-m']]):
-    print('ERROR: cannot provide -m or -l options for twoplusone algorithm')
+if opts['-a'] == 'greedy' and '-l' in opts:
+    print('ERROR: greedy (MU + 1) algorithm can only produces one child ' +
+          '- invalid option -m')
     printHelp()
-if opts['-a'] != 'twoplusone' and any([i not in opts for i in ['-l', '-m']]):
-    print('ERROR: must provide -m and -l options unless using twoplusone')
+if opts['-a'] == 'greedy' and '-m' not in opts:
+    print('ERROR: must provide -m option for greedy (MU + 1) algorithm ' +
+          '- invalid option -m')
     printHelp()
-F = 2.5
+if (opts['-a'] not in ['greedy', 'lambdalambda'] and
+   any([i not in opts for i in ['-l', '-m']])):
+    print('ERROR: must provide -m and -l options unless using greedy or ' +
+          'lambdalambda')
+    printHelp()
 if '-F' in opts:
     try:
-        F = float(opts['-F'])
+        options['F'] = float(opts['-F'])
     except ValueError:
         print('ERROR: the -F option must be a number')
         printHelp()
+if '-R' in opts and opts['p'] != 'mkp':
+    print('ERROR: -R option only relevant for -p mkp option')
+    printHelp()
+if '-f' in opts and opts['-a'] not in ['plus', 'comma']:
+    print('ERROR: the -f option is only valid for -a plus and -a comma')
+    printHelp()
+if opts['-a'] == 'lambdalambda' and '-m' in opts or '-l' in opts:
+    print('ERROR: cannot provide -m or -l options for -a lambdalambda')
+    printHelp()
 
-util.setF(F)
-
-
-if '-A' in opts:
-    util.setAdjusting(1)
-else:
-    util.setAdjusting(0)
-
-if '-R' in opts:
-    util.setRepair(1)
-else:
-    util.setRepair(0)
+options['adjusting'] = '-A' in opts
+options['repair'] = '-R' in opts
 
 # mandatory options
-problem = opts['-p']
-MU = 2 if opts['-a'] == 'twoplusone' else int(opts['-m'])
-LAMBDA = 1 if opts['-a'] == 'twoplusone' else int(opts['-l'])
-selection = opts['-S']
-size = int(opts['-s']) if '-s' in opts else 1
-algorithm = opts['-a']
+options['problem'] = opts['-p']
+try:
+    options['mu'] = int(opts['-m']) if opts['-a'] != 'lambdalambda' else 1
+except ValueError:
+    print('ERROR: the -m option must be an integer')
+    printHelp()
+
+try:
+    options['lambda'] = int(opts['-l']) if opts['-a'] != 'lambdalambda' else 'lambda'
+except ValueError:
+    print('ERROR: the -l option must be an integer')
+    printHelp()
+
+options['selection'] = opts['-S']
+if '-s' in opts:
+    try:
+        options['tournsize'] = int(opts['-s'])
+    except ValueError:
+        print('ERROR: the -s option must be an integer')
+        printHelp()
+options['algorithm'] = opts['-a']
 
 # additional options
-fast = '-f' in opts
-crossover = '-c' in opts
-max_evals = int(opts['-e']) if '-e' in opts else 10000
-BETA = opts['-b'] if '-b' in opts else 1.5
-seed = opts['-r'] if '-r' in opts else 100
+options['fast'] = '-f' in opts
+options['crossover'] = '-c' in opts
+options['max_evals'] = 10000
+if '-e' in opts:
+    try:
+        options['max_evals'] = int(opts['-e'])
+    except ValueError:
+        print('ERROR: the -e option must be an integer')
+        printHelp()
+options['beta'] = 1.5
+if '-b' in opts:
+    try:
+        options['F'] = float(opts['-b'])
+    except ValueError:
+        print('ERROR: the -b option must be a number')
+        printHelp()
+options['seed'] = 100
+if '-r' in opts:
+    try:
+        options['seed'] = int(opts['-r'])
+    except ValueError:
+        print('ERROR: the -r option must be an integer')
+        printHelp()
 
 # Need to set random seed in util file as well
-random.seed(seed)
-util.setSeed(seed)
+random.seed(options['seed'])
+util.setSeed(options['seed'])
 
 # problem file
 if len(args) < 1:
     print(('ERROR: please provide a problem file\n' +
            'This is also used as the results file name'))
     printHelp()
-f = args[0]
-
-algorithms = {'plus': util.plus,
-              'comma': util.comma,
-              'twoplusone': util.twoPlusOne,
-              'lambdalambda': util.lambdalambda}
-solvers = {'mkp': util.MKP, 'maxsat': util.maxSat, 'ising': util.ising,
-           'onemax': util.oneMax}
-
-creator.create("FitnessMax", base.Fitness, weights=(1.0, ))
-creator.create("Individual", np.ndarray, fitness=creator.FitnessMax)
-
-toolbox = base.Toolbox()
-toolbox.register("attr_bool", random.randint, 0, 1)
-toolbox.register("mate", tools.cxUniform, indpb=0.5)
-toolbox.register("select", tools.selBest)
-
-if selection == 'uniform':
-    toolbox.register("selectParents", util.selectParents, toolbox)
-elif selection == 'tournament':
-    toolbox.register("selectParents", tools.selTournament, tournsize=size)
 
 # Set the output folder here
-results_folder = ('results/' + problem + '/' +
-                  ('Greedy ' if algorithm == 'twoplusone' else '') +
-                  str(MU) + '+' + str(LAMBDA) +
-                  ((', '+ str(LAMBDA)) if algorithm == 'lambdalambda' else '') +
-                  ('Fast ' if fast else '') +
-                  ('GA' if crossover else 'EA') + '/')
+results_folder = ('results/' + options['problem'] + '/' +
+                  ('Greedy ' if options['algorithm'] == 'greedy' else '') +
+                  str(options['mu']) + '+' + str(options['lambda']) +
+                  ((', ' + str(options['lambda'])) if options['algorithm'] == 'lambdalambda' else '') +
+                  ('Fast ' if options['fast'] else '') +
+                  ('GA' if options['crossover'] else 'EA') + '/')
 if not os.path.exists(results_folder):
     os.makedirs(results_folder)
 
-solvers[problem](MU, LAMBDA, algorithms[algorithm], fast, crossover,
-                 results_folder, toolbox, f, max_evals, BETA)
+options['algorithm_fn'] = algorithms[options['algorithm']]
+options['results_folder'] = results_folder
+options['problem_file'] = args[0]
+options['solver'] = solvers[options['problem']]
+util.main(options)

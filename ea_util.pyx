@@ -12,7 +12,6 @@ import numpy as np
 import operator as op
 
 from numpy.random import choice
-from statsmodels import robust
 from functools import reduce
 
 cimport numpy as np
@@ -30,10 +29,14 @@ global repair
 repair = 0
 global toolbox
 global ordering
+global hof
+global stats
+
 
 def setRepair(int r):
     global repair
     repair = r
+
 
 def setF(float f):
     global F
@@ -47,6 +50,13 @@ def setAdjusting(int a):
 
 def setSeed(seed):
     random.seed(seed)
+
+
+def log(logbook, population, gen, nevals):
+    record = stats.compile(population) if stats else {}
+    logbook.record(gen=gen, nevals=nevals, **record)
+    if hof is not None:
+        hof.update(population)
 
 
 def fitnessValue(individual):
@@ -110,11 +120,13 @@ def evalIsing(np.ndarray[DTYPE_t, ndim=2] spins, int min_energy, int span,
 
 def evalMaxSat(signs, clauses, individual):
     total = 0
-    for i in range(len(clauses)):
-        for c in range(3):
-            if (individual[clauses[i][c]] == signs[i][c]):
+    for (c1, c2, c3), (s1, s2, s3) in zip(clauses, signs):
+            if (individual[c1] == s1):
                 total += 1
-                break
+            elif (individual[c2] == s2):
+                total += 1
+            elif (individual[c3] == s3):
+                total += 1
     return float_round(float(total) / len(clauses), precision),
 
 
@@ -231,189 +243,135 @@ def cross_c(p1, p2, toolbox):
     return p1
 
 
-def lambdalambda(population, toolbox, MU, LAMBDA, N, crossover,
-                 stats, hof, fast, max_evals, BETA):
-    x = toolbox.individual()
-    x.fitness.values = toolbox.evaluate(x)
+def bestFitness(population):
+    return fitnessValue(tools.selBest(population, 1)[0])
 
-    LAMBDA = 1
 
-    gen = 0
+def lambdalambda(options):
+    # initialise logbook
     logbook = tools.Logbook()
     logbook.header = ['gen', 'nevals'] + (stats.fields if stats else [])
+    
+    x = toolbox.individual()
+    x.fitness.values = toolbox.evaluate(x)
+    population= [x]
+    LAMBDA = 1
+    gen = 0
+    eval_count = 1
 
-    invalid_ind = [ind for ind in population if not ind.fitness.valid]
-    fitness_count = len(invalid_ind)
-    fitnesses = toolbox.map(toolbox.evaluate, invalid_ind)
-
-    for ind, fit in zip(invalid_ind, fitnesses):
-        ind.fitness.values = fit
-
-    if hof is not None:
-        hof.update(population)
-
-    record = stats.compile(population) if stats else {}
-    logbook.record(gen=0, nevals=len(invalid_ind), **record)
+    log(logbook, population, gen, len(population))
 
     # Begin the generational process
-    while(fitness_count < max_evals and fitnessValue(hof[0]) < 1):
+    while(eval_count < options['max_evals'] and bestFitness(population) < 1):
+        nevals = 0
         gen += 1
         k = LAMBDA
         c = 1.0/k
-        p = LAMBDA/N
+        p = LAMBDA/options['N']
 
         toolbox.register("mate", tools.cxUniform, indpb=c)
 
         # Mutation phase
-        ell = np.random.binomial(N, p)
+        ell = np.random.binomial(options['N'], p)
         X = [mut_l(toolbox.clone(x), ell) for i in range(LAMBDA)]
         x_prime = max(X, key=lambda i: fitnessValue(i))
-        fitness_count += len(X)
+        nevals += len(X)
 
         # Crossover phase
         Y = [cross_c(toolbox.clone(x), toolbox.clone(x_prime), toolbox) for i in range(LAMBDA)]
         y = max(Y, key=lambda i: fitnessValue(i))
-        fitness_count += len(Y)
+        nevals += len(Y)
 
         if fitnessValue(y) > fitnessValue(x):
             x = y
             LAMBDA = max([(LAMBDA/F), 1])
         elif fitnessValue(y) == fitnessValue(x):
             x = y
-            LAMBDA = min([(LAMBDA*F**0.25), N])
+            LAMBDA = min([(LAMBDA*F**0.25), options['N']])
         elif fitnessValue(y) < fitnessValue(x):
-            LAMBDA = min([(LAMBDA*F**0.25), N])
+            LAMBDA = min([(LAMBDA*F**0.25), options['N']])
 
         LAMBDA = int(LAMBDA)
+        eval_count += nevals
 
         population = [y]
-        record = stats.compile(population) if stats else {}
-        logbook.record(gen=gen, nevals=len(invalid_ind), **record)
-
-        #  Update the hall of fame with the generated individuals
-        if hof is not None:
-            hof.update([x])
+        log(logbook, population, gen, nevals)
 
     return population, logbook
 
 
-def theory_GA(population, toolbox, int MU, int LAMBDA, int N, crossover, stats,
-          hof, fast, int max_evals, float BETA, selection):
-    gen = 0
-
+def theory_GA(options):
     # initialise logbook
     logbook = tools.Logbook()
     logbook.header = ['gen', 'nevals'] + (stats.fields if stats else [])
 
     # initialise individuals fitness
+    population = toolbox.population(n=options['mu'])
     eval_count = len(population)
-    fitnesses = toolbox.map(toolbox.evaluate, population)
-    for ind, fit in zip(population, fitnesses):
-        ind.fitness.values = fit
+    for ind in population:
+        ind.fitness.values = toolbox.evaluate(ind)
 
-    # initialise hall of fame
-    if hof is not None:
-        hof.update(population)
-
-    record = stats.compile(population) if stats else {}
-    logbook.record(gen=0, nevals=len(population), **record)
+    gen = 0
+    log(logbook, population, gen, len(population))
 
     # Begin the generational process
-    while(eval_count < max_evals and fitnessValue(hof[0]) < 1):
+    while(eval_count < options['max_evals'] and bestFitness(population) < 1):
         gen += 1
-        if(fast):
-            alpha = fmut(N, BETA)
-            toolbox.register("mutate", tools.mutFlipBit, indpb=alpha/N)
+        if(options['fast']):
+            alpha = fmut(options['N'], options['beta'])
+            toolbox.register("mutate", tools.mutFlipBit, indpb=alpha/options['N'])
 
         #  Generate offspring
         offspring = []
 
         # if crossover is being used it is done before mutation
-        if crossover:
-            for i in range(LAMBDA):
+        if options['crossover']:
+            for i in range(options['lambda']):
                 p1, p2 = toolbox.selectParents(population, 2)
                 toolbox.mate(p1, p2)
                 offspring += [p1]
         else:
-            offspring = [toolbox.selectParents(population, 1)[0] for i in range(LAMBDA)]
+            offspring = [toolbox.selectParents(population, 1)[0] for i in range(options['lambda'])]
 
         for off in offspring:
             off, = toolbox.mutate(off)
-            del off.fitness.values
 
         #  Evaluate the individuals with an invalid fitness
         eval_count += len(offspring)
-        fitnesses = toolbox.map(toolbox.evaluate, offspring)
-        for ind, fit in zip(offspring, fitnesses):
-            ind.fitness.values = fit
 
-        # Update the hall of fame with the generated individuals
-        if hof is not None:
-            hof.update(offspring)
+        for ind in offspring:
+            ind.fitness.values = toolbox.evaluate(ind)
 
         # Select the next generation, favouring the offspring in the event
         # of equal fitness values
-        if selection == 'plus':
-            population = favourOffspring(population, offspring, MU)
-        elif selection == 'comma':
-            population = toolbox.select(offspring, MU)
+        if options['algorithm'] == 'comma':
+            population = toolbox.select(offspring, options['mu'])
+        else:
+            population = favourOffspring(population, offspring, options['mu'])
 
-
-        # Append the current generation statistics to the logbook
-        record = stats.compile(population) if stats else {}
-        logbook.record(gen=gen, nevals=len(offspring), **record)
+        log(logbook, population, gen, len(offspring))
 
     return population, logbook
 
 
-def plus(population, toolbox, int MU, int LAMBDA, int N, crossover, stats,
-          hof, fast, int max_evals, float BETA):
-    return theory_GA(population, toolbox, MU, LAMBDA, N, crossover, stats,
-          hof, fast, max_evals, BETA, 'plus')
-
-
-def comma(population, toolbox, int MU, int LAMBDA, int N, crossover, stats,
-          hof, fast, int max_evals, float BETA):
-    return theory_GA(population, toolbox, MU, LAMBDA, N, crossover, stats,
-          hof, fast, max_evals, BETA, 'comma')
-
-
-def favourDiversity(population, MU):
-    counts = []
-    for i in population:
-        count = 0
-        for j in population:
-            if list(i) == list(j):
-                count += 1
-        counts.append((i, len(population)/count))
-    counts.sort(key=lambda x: (fitnessValue(x[0]), x[1]), reverse=True)
-    return [i for i, _ in counts][:MU]
-
-
-def twoplusone(population, toolbox, MU, LAMBDA, N, crossover,
-              stats, hof, fast, max_evals, BETA):
-    toolbox.register("mutate", tools.mutFlipBit, indpb=1.618/N)
-    gen = 0
+def greedy(options):
+    toolbox.register("mutate", tools.mutFlipBit, indpb=1.618/options['N'])
+    
     logbook = tools.Logbook()
     logbook.header = ['gen', 'nevals'] + (stats.fields if stats else [])
 
-    invalid_ind = [ind for ind in population if not ind.fitness.valid]
-    fitness_count = len(invalid_ind)
-    fitnesses = toolbox.map(toolbox.evaluate, invalid_ind)
+    gen = 0
+    population = toolbox.population(n=options['mu'])
+    eval_count = len(population)
 
-    for ind, fit in zip(invalid_ind, fitnesses):
-        ind.fitness.values = fit
-
-    if hof is not None:
-        hof.update(population)
-
-    record = stats.compile(population) if stats else {}
-    logbook.record(gen=0, nevals=len(invalid_ind), **record)
+    for ind in population:
+        ind.fitness.values = toolbox.evaluate(ind)
+    
+    log(logbook, population, gen, len(population))
 
     # Begin the generational process
-    while(fitness_count < max_evals and fitnessValue(hof[0]) < 1):
+    while(eval_count < options['max_evals'] and bestFitness(population) < 1):
         gen += 1
-
         maxFit = max([fitnessValue(x) for x in population])
         bestIndividuals = [x for x in population if fitnessValue(x) == maxFit]
         y1 = toolbox.clone(random.choice(bestIndividuals))
@@ -422,7 +380,7 @@ def twoplusone(population, toolbox, MU, LAMBDA, N, crossover,
         y_prime = y1
         y_prime, = toolbox.mutate(y_prime)
         y_prime.fitness.values = toolbox.evaluate(y_prime)
-        fitness_count += 1
+        eval_count += 1
         population.sort(key=lambda x: fitnessValue(x))
         z = population[0]  # population sorted worst to best
         if (fitnessValue(y_prime) >= fitnessValue(z) and
@@ -430,37 +388,45 @@ def twoplusone(population, toolbox, MU, LAMBDA, N, crossover,
             population[0] = y_prime
 
 
-        record = stats.compile(population) if stats else {}
-        logbook.record(gen=gen, nevals=len(invalid_ind), **record)
-
-        #  Update the hall of fame with the generated individuals
-        if hof is not None:
-            hof.update([y_prime])
-        print(logbook.stream)
+        log(logbook, population, gen, 1)
 
     return population, logbook
 
 
-def main(N, MU, LAMBDA, BETA, t_box, crossover, fast, algorithm, max_evals):
+def main(options):
+    creator.create("FitnessMax", base.Fitness, weights=(1.0, ))
+    creator.create("Individual", np.ndarray, fitness=creator.FitnessMax)
     global toolbox
-    toolbox = t_box
-    population = toolbox.population(n=MU)
+    toolbox = base.Toolbox()
+    toolbox.register("attr_bool", random.randint, 0, 1)
+    toolbox.register("mate", tools.cxUniform, indpb=0.5)
+    toolbox.register("select", tools.selBest)
+    
+    if options['selection'] == 'uniform':
+        toolbox.register("selectParents", selectParents, toolbox)
+    elif options['selection'] == 'tournament':
+        toolbox.register("selectParents", tools.selTournament, tournsize=options['tournsize'])
+    
+    global hof
     hof = tools.HallOfFame(1, similar=np.array_equal)
+    global stats
     stats = tools.Statistics(lambda ind: ind.fitness.values)
     stats.register("avg", np.mean)
     stats.register("std", np.std)
     stats.register("min", np.min)
     stats.register("max", np.max)
     
-    toolbox.register("mutate", tools.mutFlipBit, indpb=1/N)
+    options['solver'](options)
+    
+    toolbox.register("mutate", tools.mutFlipBit, indpb=1/options['N'])
 
-    pop, log = algorithm(population, toolbox, MU, LAMBDA, N, crossover, stats,
-                         hof, fast, max_evals, BETA)
+    pop, log = options['algorithm_fn'](options)
+    printResults(log, options['results_folder'], options['problem_file'])
 
-    return pop, log, hof
+    return pop, log
 
 
-def printResults(hof, log, results_folder, f):
+def printResults(log, results_folder, f):
     f = f.split('/')[-1]
     with open(results_folder+f, 'w') as l:
         l.write(str(log))
@@ -476,62 +442,42 @@ def printResults(hof, log, results_folder, f):
     print(result)
 
 
-def oneMax(MU, LAMBDA, algorithm, fast, crossover, results_folder, toolbox, f,
-           max_evals, BETA):
-    N = int(f.split('_')[1])
+def oneMax(options):
+    options['N'] = int(os.path.basename(options['problem_file']).split('_')[1])
 
     toolbox.register("evaluate", evalOneMax)
     toolbox.register("individual", tools.initRepeat, creator.Individual,
-                     toolbox.attr_bool, N)
+                     toolbox.attr_bool, options['N'])
     toolbox.register("population", tools.initRepeat, list,
                      toolbox.individual)
 
-    # Run the algorithm
-    pop, log, hof = main(N, MU, LAMBDA, BETA, toolbox, crossover, fast, algorithm, max_evals)
 
-    printResults(hof, log, results_folder, f)
-
-
-def ising(MU, LAMBDA, algorithm, fast, crossover, results_folder, toolbox, f,
-          max_evals, BETA):
-    N = int(f.split('_')[2])
-
-    (min_energy, solution, number_of_spins,
-     spins) = readIsing(f)
+def ising(options):
+    min_energy, solution, number_of_spins, spins = readIsing(options['problem_file'])
+    options['N'] = len(solution)
     span = number_of_spins - min_energy
 
     toolbox.register("evaluate", evalIsing, spins, min_energy, span)
     toolbox.register("individual", tools.initRepeat, creator.Individual,
-                     toolbox.attr_bool, N)
+                     toolbox.attr_bool, options['N'])
     toolbox.register("population", tools.initRepeat, list,
                      toolbox.individual)
 
-    # Run the algorithm
-    pop, log, hof = main(N, MU, LAMBDA, BETA, toolbox, crossover, fast, algorithm, max_evals)
 
-    printResults(hof, log, results_folder, f)
-
-
-def maxSat(MU, LAMBDA, algorithm, crossover, fast, results_folder, toolbox, f,
-           max_evals, BETA):
-    N = int(os.path.basename(f).split('_')[1])
-    solution, signs, clauses = readMaxSat(f)
+def maxSat(options):
+    solution, signs, clauses = readMaxSat(options['problem_file'])
+    options['N'] = len(solution)
 
     # Structure initializers
     toolbox.register('evaluate', evalMaxSat, signs, clauses)
     toolbox.register('individual', tools.initRepeat, creator.Individual,
-                     toolbox.attr_bool, N)
+                     toolbox.attr_bool, options['N'])
     toolbox.register('population', tools.initRepeat, list,
                      toolbox.individual)
 
-    pop, log, hof = main(N, MU, LAMBDA, BETA, toolbox, crossover, fast, algorithm, max_evals)
-
-    printResults(hof, log, results_folder, f)
-
-
-def MKP(MU, LAMBDA, algorithm, fast, crossover, results_folder, toolbox, f,
-        max_evals, BETA):
-    N, M, O, values, coefficients, capacities = readMKP(f)
+def MKP(options):
+    N, M, O, values, coefficients, capacities = readMKP(options['problem_file'])
+    options['N'] = N
     
     Omega = [lp_relaxed(weights, values, capacity, N) for weights, capacity in zip(coefficients, capacities)]
     U = [values[j]/sum([Omega[i] * coefficients[i][j] for i in range(M)]) for j in range(N)]
@@ -544,5 +490,3 @@ def MKP(MU, LAMBDA, algorithm, fast, crossover, results_folder, toolbox, f,
                      creator.Individual, N, capacities, coefficients)
     toolbox.register("population", tools.initRepeat, list,
                      toolbox.individual)
-    pop, log, hof = main(N, MU, LAMBDA, BETA, toolbox, crossover, fast, algorithm, max_evals)
-    printResults(hof, log, results_folder, f)

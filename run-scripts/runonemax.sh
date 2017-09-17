@@ -30,30 +30,30 @@ LENGTHS=(16 25 36 49 64 81 100 121 144 169 196 225 256 289 324 361 400 441 484 5
 # (2 + 1) GA
 #for l in ${LENGTHS[@]}
 #do
-	l=64
-	(for seed in {0..199..1}
-	do
-		>&2 echo -ne "$l    $seed\r"
-		sum=$((l+seed))
-		python solver.py -c -m 2 -l 1 -p onemax -S uniform -a plus -r $sum -e 10000 onemax_${l}_$seed.txt
-	
-	done) > results/twoplusonetest.txt
+#	l=64
+#	(for seed in {0..199..1}
+#	do
+#		>&2 echo -ne "$l    $seed\r"
+#		sum=$((l+seed))
+#		python solver.py -c -m 2 -l 1 -p onemax -S uniform -a plus -r $sum -e 10000 onemax_${l}_$seed.txt
+#	
+#	done) > results/twoplusonetest.txt
 #done
-echo -ne "\n"
+#echo -ne "\n"
 
 # Greedy (2 + 1) GA
 #for l in ${LENGTHS[@]}
 #do
-#	l=64
-#	(for seed in {0..299..1}
-#	do
-#		>&2 echo -ne "$l    $seed\r"
-#		sum=$((l+seed+17))
-#		python solver.py -c -p onemax -S uniform -a twoplusone -r $sum -e 10000 onemax_${l}_$seed.txt
-#	
-#	done) > results/greedytwoplusonetest.txt
+	l=128
+	(for seed in {0..999..1}
+	do
+		>&2 echo -ne "$l    $seed\r"
+		sum=$((l+seed+17))
+		python solver.py -c -p onemax -S uniform -a greedy -m 2 -r $sum -e 10000 onemax_${l}_$seed.txt
+	
+	done) > results/greedytwoplusonetest.txt
 #done
-#echo -ne "\n"
+echo -ne "\n"
 
 # (10 + 1) EA
 
