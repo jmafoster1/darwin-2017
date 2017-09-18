@@ -252,12 +252,12 @@ def lambdalambda(options):
 
         # Mutation phase
         ell = np.random.binomial(options['N'], p)
-        X = [mut_l(toolbox.clone(x), ell) for i in range(LAMBDA)]
+        X = [mut_l(toolbox.clone(x), ell) for i in range(int(LAMBDA))]
         x_prime = max(X, key=lambda i: fitnessValue(i))
         nevals += len(X)
 
         # Crossover phase
-        Y = [cross_c(toolbox.clone(x), toolbox.clone(x_prime), c) for i in range(LAMBDA)]
+        Y = [cross_c(toolbox.clone(x), toolbox.clone(x_prime), c) for i in range(int(LAMBDA))]
         y = max(Y, key=lambda i: fitnessValue(i))
         nevals += len(Y)
 
@@ -270,12 +270,10 @@ def lambdalambda(options):
         elif fitnessValue(y) < fitnessValue(x):
             LAMBDA = min([(LAMBDA*(options['F']**0.25)), options['N']])
 
-        LAMBDA = int(LAMBDA)
         eval_count += nevals
 
         population = [x]
         log(logbook, population, gen, nevals)
-        print(logbook.stream)
 
     return population, logbook
 
@@ -307,7 +305,7 @@ def theory_GA(options):
         # if crossover is being used it is done before mutation
         if options['crossover']:
             for i in range(options['lambda']):
-                p1, p2 = toolbox.selectParents(population, 2)
+                p1, p2 = [toolbox.clone(x) for x in toolbox.selectParents(population, 2)]
                 toolbox.mate(p1, p2)
                 offspring += [p1]
         else:
@@ -335,7 +333,7 @@ def theory_GA(options):
 
 
 def greedy(options):
-    toolbox.register("mutate", tools.mutFlipBit, indpb=1.618/options['N'])
+    toolbox.register("mutate", tools.mutFlipBit, indpb=1.0/options['N'])
     
     logbook = tools.Logbook()
     logbook.header = ['gen', 'nevals'] + (stats.fields if stats else [])

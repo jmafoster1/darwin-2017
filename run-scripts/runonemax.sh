@@ -8,7 +8,6 @@ do
 		echo -ne "$l    ${seed}\r"
 		sum=$((l+seed))
 		python solver.py -p onemax -m 10000 -l 1 -S uniform -a plus -r $sum -e 10000 onemax_${l}_${seed}.txt
-	
 	done
 done
 echo -ne "\n"
@@ -21,7 +20,6 @@ do
 		echo -ne "$l    ${seed}\r"
 		sum=$((l+seed))
 		python solver.py -p onemax -m 1 -l 1 -S uniform -a plus -r $sum -e 10000 onemax_${l}_${seed}.txt
-	
 	done
 done
 echo -ne "\n"
@@ -46,7 +44,6 @@ do
 		echo -ne "$l    ${seed}\r"
 		sum=$((l+seed))
 		python solver.py -p onemax -S uniform -a greedy -m 2 -r $sum -e 10000 onemax_${l}_${seed}.txt
-	
 	done
 done
 echo -ne "\n"
@@ -59,7 +56,6 @@ do
 		echo -ne "$l    ${seed}\r"
 		sum=$((l+seed))
 		python solver.py -p onemax -m 5 -l 1 -S uniform -a plus -r $sum -e 10000 onemax_${l}_${seed}.txt
-	
 	done
 done
 echo -ne "\n"
@@ -72,6 +68,18 @@ do
 		echo -ne "$l    ${seed}\r"
 		sum=$((l+seed))
 		python solver.py -p onemax -m 5 -l 1 -c -S uniform -a plus -r $sum -e 10000 onemax_${l}_${seed}.txt
+	done
+done
+echo -ne "\n"
+
+# (5+1) GA tournament selection
+for l in ${LENGTHS[@]}
+do
+	for seed in {0..199..1}
+	do
+		echo -ne "$l    ${seed}\r"
+		sum=$((l+seed))
+		python solver.py -p onemax -m 5 -l 1 -c -S tournament -s 2 -a plus -r $sum -e 10000 onemax_${l}_${seed}.txt
 	done
 done
 echo -ne "\n"

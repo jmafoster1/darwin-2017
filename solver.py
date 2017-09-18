@@ -54,9 +54,14 @@ import ea_util as util
 import sys
 import getopt
 
+
 # Process commandline arguments here
 opts, args = getopt.getopt(sys.argv[1:], 'hp:fm:l:ce:b:S:s:a:r:AF:R')
 opts = dict(opts)
+
+
+def eprint(*args, **kwargs):
+    print(*args, file=sys.stderr, **kwargs)
 
 
 def printHelp():
@@ -82,30 +87,30 @@ if '-h' in opts:
 ##############################
 mandatory = ['-p', '-S', '-a']
 if any([i not in opts for i in mandatory]):
-    print('ERROR: please provide all required options')
+    eprint('ERROR: please provide all required options')
     printHelp()
 if opts['-a'] not in algorithms.keys():
-    print('ERROR: invalid algorithm, -a option must be one of',
-          list(algorithms.keys()))
+    eprint('ERROR: invalid algorithm, -a option must be one of',
+           list(algorithms.keys()))
     printHelp()
 if opts['-p'] not in solvers.keys():
-    print('ERROR: invalid problem, -p option must be one of',
-          list(solvers.keys()))
+    eprint('ERROR: invalid problem, -p option must be one of',
+           list(solvers.keys()))
 if opts['-S'] == 'tournament' and '-s' not in opts:
-    print('ERROR: please provide tournament size')
+    eprint('ERROR: please provide tournament size')
     printHelp()
 if opts['-a'] == 'greedy' and '-l' in opts:
-    print('ERROR: greedy (MU + 1) algorithm can only produces one child ' +
-          '- invalid option -m')
+    eprint('ERROR: greedy (MU + 1) algorithm can only produces one child ' +
+           '- invalid option -m')
     printHelp()
 if opts['-a'] == 'greedy' and '-m' not in opts:
-    print('ERROR: must provide -m option for greedy (MU + 1) algorithm ' +
-          '- invalid option -m')
+    eprint('ERROR: must provide -m option for greedy (MU + 1) algorithm ' +
+           '- invalid option -m')
     printHelp()
 if (opts['-a'] not in ['greedy', 'lambdalambda'] and
    any([i not in opts for i in ['-l', '-m']])):
-    print('ERROR: must provide -m and -l options unless using greedy or ' +
-          'lambdalambda')
+    eprint('ERROR: must provide -m and -l options unless using greedy or ' +
+           'lambdalambda')
     printHelp()
 if '-F' in opts:
     try:
@@ -114,13 +119,13 @@ if '-F' in opts:
         print('ERROR: the -F option must be a number')
         printHelp()
 if '-R' in opts and opts['p'] != 'mkp':
-    print('ERROR: -R option only relevant for -p mkp option')
+    eprint('ERROR: -R option only relevant for -p mkp option')
     printHelp()
 if '-f' in opts and opts['-a'] not in ['plus', 'comma']:
-    print('ERROR: the -f option is only valid for -a plus and -a comma')
+    eprint('ERROR: the -f option is only valid for -a plus and -a comma')
     printHelp()
 if opts['-a'] == 'lambdalambda' and ('-m' in opts or '-l' in opts):
-    print('ERROR: cannot provide -m or -l options for -a lambdalambda')
+    eprint('ERROR: cannot provide -m or -l options for -a lambdalambda')
     printHelp()
 
 options['adjusting'] = '-A' in opts
@@ -131,7 +136,7 @@ options['problem'] = opts['-p']
 try:
     options['mu'] = int(opts['-m']) if opts['-a'] != 'lambdalambda' else 1
 except ValueError:
-    print('ERROR: the -m option must be an integer')
+    eprint('ERROR: the -m option must be an integer')
     printHelp()
 
 try:
@@ -141,9 +146,9 @@ try:
         options['lambda'] = 1
     else:
         options['lambda'] = int(opts['-l'])
-    
+
 except ValueError:
-    print('ERROR: the -l option must be an integer')
+    eprint('ERROR: the -l option must be an integer')
     printHelp()
 
 options['selection'] = opts['-S']
@@ -151,7 +156,7 @@ if '-s' in opts:
     try:
         options['tournsize'] = int(opts['-s'])
     except ValueError:
-        print('ERROR: the -s option must be an integer')
+        eprint('ERROR: the -s option must be an integer')
         printHelp()
 options['algorithm'] = opts['-a']
 
@@ -163,21 +168,21 @@ if '-e' in opts:
     try:
         options['max_evals'] = int(opts['-e'])
     except ValueError:
-        print('ERROR: the -e option must be an integer')
+        eprint('ERROR: the -e option must be an integer')
         printHelp()
 options['beta'] = 1.5
 if '-b' in opts:
     try:
         options['F'] = float(opts['-b'])
     except ValueError:
-        print('ERROR: the -b option must be a number')
+        eprint('ERROR: the -b option must be a number')
         printHelp()
 options['seed'] = 100
 if '-r' in opts:
     try:
         options['seed'] = int(opts['-r'])
     except ValueError:
-        print('ERROR: the -r option must be an integer')
+        eprint('ERROR: the -r option must be an integer')
         printHelp()
 
 # Need to set random seed in util file as well
@@ -185,7 +190,7 @@ random.seed(options['seed'])
 
 # problem file
 if len(args) < 1:
-    print(('ERROR: please provide a problem file\n' +
+    eprint(('ERROR: please provide a problem file\n' +
            'This is also used as the results file name'))
     printHelp()
 
@@ -195,6 +200,7 @@ results_folder = ('results/' + options['problem'] + '/' +
                   str(options['mu']) + '+' + str(options['lambda']) +
                   ((', ' + str(options['lambda'])) if options['algorithm'] == 'lambdalambda' else '') +
                   ('Fast ' if options['fast'] else '') +
+                  (('Tournament-' + str(options['tournsize'])) if options['selection'] == 'tournament' else '') +
                   ('GA' if options['crossover'] else 'EA') + '/')
 if not os.path.exists(results_folder):
     os.makedirs(results_folder)
