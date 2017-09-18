@@ -10,6 +10,7 @@ from deap import creator
 
 import numpy as np
 import operator as op
+import pandas as pd
 
 from numpy.random import choice
 from functools import reduce
@@ -407,8 +408,10 @@ def main(options):
 
 def printResults(log, results_folder, f):
     f = f.split('/')[-1]
+    df = pd.DataFrame(log)
+    df.sort_values(by=['gen'])
     with open(results_folder+f, 'w') as l:
-        l.write(str(log))
+            df.to_csv(path_or_buf=l)
 
     # Print result
     result = ("Run:" + f +
