@@ -209,6 +209,8 @@ if len(args) < 1:
 
 # Set the output folder here
 results_folder = ('results/' + options['problem'] + '/' +
+                  ('repair/' if options['problem'] == 'mkp' and '-R' in opts else '') +
+                  ('no-repair/' if options['problem'] == 'mkp' and '-R' not in opts else '') +
                   ('Greedy-' if options['algorithm'] == 'greedy' else '') +
                   str(options['mu']) + '+' + str(options['lambda']) +
                   ((',' + str(options['lambda'])) if options['algorithm'] == 'lambdalambda' else '') +

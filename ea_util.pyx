@@ -413,10 +413,10 @@ def main(options):
 
 
 def printResults(log, results_folder, f):
-    f = f.split('/')[-1]
+    f = os.path.splitext(os.path.basename(f))[0]
     df = pd.DataFrame(log)
     df.sort_values(by=['gen'])
-    with open(results_folder+f, 'w') as l:
+    with open(results_folder+f+'.csv', 'w') as l:
             df.to_csv(path_or_buf=l)
 
     # Print result
