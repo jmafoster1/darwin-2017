@@ -163,10 +163,7 @@ def validKnapsack(np.ndarray[DTYPE_t, ndim=1] individual,
     return all([i < 0 for i in(constraints - capacities)])
 
 
-def lp_relaxed(weights,
-               values,
-               float capacity,
-               int N):
+def lp_relaxed(weights, values, capacity, N):
     cons = ({'type': 'ineq', 'fun': lambda x: np.dot(x, weights) - capacity})
     bnds = [(0, 1) for x in range(N)]
     return minimize(lambda x: np.dot(x, values),  # objective function
@@ -181,14 +178,15 @@ def repairKnapsack(np.ndarray[DTYPE_f, ndim=1] capacities,
                    np.ndarray[DTYPE_f, ndim=2] coefficients,
                    int N, int M, individual):
     for j in ordering:
-        if individual[j] and not validKnapsack(individual, capacities, coefficients):
+        if validKnapsack(individual, capacities, coefficients):
+            break
+        if individual[j]:
             individual[j] = 0
     for j in reversed(ordering):
         if not individual[j]:
             individual[j] = 1
         if not validKnapsack(individual, capacities, coefficients):
             individual[j] = 0
-    return individual
 
 
 def evalKnapsack(int M,
@@ -197,10 +195,7 @@ def evalKnapsack(int M,
                  np.ndarray[DTYPE_f, ndim=1] values,
                  np.ndarray[DTYPE_f, ndim=1] capacities,
                  np.ndarray[DTYPE_f, ndim=2] coefficients,
-                 np.ndarray[DTYPE_t, ndim=1] individual,
-                 repair):
-    if repair:
-        individual = repairKnapsack(capacities, values, coefficients, N, M, individual)
+                 np.ndarray[DTYPE_t, ndim=1] individual):
     if validKnapsack(individual, capacities, coefficients):
         return float(np.dot(individual, values)/O),
     return 0,
@@ -210,7 +205,6 @@ def mut_l(individual, l):
     bits = np.random.choice(list(range(len(individual))), l, replace=False)
     for bit in bits:
         individual[bit] = not individual[bit]
-    individual.fitness.values = toolbox.evaluate(individual)
     return individual
 
 
@@ -221,7 +215,6 @@ def cross_c(x, x_prime, c):
             child[i] = x_prime[i]
         else:
             child[i] = x[i]
-    child.fitness.values = toolbox.evaluate(child)
     return child
 
 
@@ -254,11 +247,22 @@ def lambdalambda(options):
         # Mutation phase
         ell = np.random.binomial(options['N'], p)
         X = [mut_l(toolbox.clone(x), ell) for i in range(int(LAMBDA))]
+        
+        for individual in X:
+            if options['problem'] == 'mkp' and options['repair']:
+                toolbox.repairKnapsack(individual)
+            individual.fitness.values = toolbox.evaluate(individual)
+        
         x_prime = max(X, key=lambda i: fitnessValue(i))
         nevals += len(X)
 
         # Crossover phase
         Y = [cross_c(toolbox.clone(x), toolbox.clone(x_prime), c) for i in range(int(LAMBDA))]
+        for individual in Y:
+            if options['problem'] == 'mkp' and options['repair']:
+                toolbox.repairKnapsack(individual)
+            individual.fitness.values = toolbox.evaluate(individual)
+
         y = max(Y, key=lambda i: fitnessValue(i))
         nevals += len(Y)
 
@@ -286,6 +290,7 @@ def theory_GA(options):
 
     # initialise individuals fitness
     population = toolbox.population(n=options['mu'])
+
     eval_count = len(population)
     for ind in population:
         ind.fitness.values = toolbox.evaluate(ind)
@@ -317,9 +322,11 @@ def theory_GA(options):
 
         #  Evaluate the individuals with an invalid fitness
         eval_count += len(offspring)
-
-        for ind in offspring:
-            ind.fitness.values = toolbox.evaluate(ind)
+        
+        for individual in offspring:
+            if options['problem'] == 'mkp' and options['repair']:
+                toolbox.repairKnapsack(individual)
+            individual.fitness.values = toolbox.evaluate(individual)
 
         # Select the next generation, favouring the offspring in the event
         # of equal fitness values
@@ -351,13 +358,13 @@ def greedy(options):
     # Begin the generational process
     while(eval_count < options['max_evals'] and bestFitness(population) < 1):
         gen += 1
-        maxFit = max([fitnessValue(x) for x in population])
-        bestIndividuals = [x for x in population if fitnessValue(x) == maxFit]
-        y1 = toolbox.clone(random.choice(bestIndividuals))
-        y2 = toolbox.clone(random.choice(bestIndividuals))
+        y1 = toolbox.clone(random.choice(population))
+        y2 = toolbox.clone(random.choice(population))
         toolbox.mate(y1, y2)
         y_prime = y1
         y_prime, = toolbox.mutate(y_prime)
+        if options['problem'] == 'mkp' and options['repair']:
+            toolbox.repairKnapsack(y_prime)
         y_prime.fitness.values = toolbox.evaluate(y_prime)
         eval_count += 1
         population.sort(key=lambda x: fitnessValue(x))
@@ -365,7 +372,6 @@ def greedy(options):
         if (fitnessValue(y_prime) >= fitnessValue(z) and
             all([list(x) != list(y_prime) for x in population])):
             population[0] = y_prime
-
 
         log(logbook, population, gen, 1)
 
@@ -398,7 +404,7 @@ def main(options):
     
     options['solver'](options)
     
-    toolbox.register("mutate", tools.mutFlipBit, indpb=1/options['N'])
+    toolbox.register("mutate", tools.mutFlipBit, indpb=options['mutrate']/options['N'])
 
     pop, log = options['algorithm_fn'](options)
     printResults(log, options['results_folder'], options['problem_file'])
@@ -416,9 +422,6 @@ def printResults(log, results_folder, f):
     # Print result
     result = ("Run:" + f +
               " Evals:" + str(sum(log.select("nevals"))) +
-#              " MES:" + str(np.median(evals)) +
-#              " MAD:" + str(robust.mad(evals)) +
-#              " FAILURES:" + str(failures) +
               " Best:" + str(fitnessValue(hof[0])) +
               " Solution:1.0")
     print(result)
@@ -466,8 +469,11 @@ def MKP(options):
     global ordering
     ordering = [x[0] for x in sorted(list(enumerate(U)), key=lambda x: x[1])]
     
+    if options['repair']:
+        toolbox.register('repairKnapsack', repairKnapsack, capacities, values, coefficients, N, M)
+    
     toolbox.register("evaluate", evalKnapsack, M, N, O, values, capacities,
-                     coefficients, options['repair'])
+                     coefficients)
     toolbox.register("individual", generateKnapsack,
                      creator.Individual, N, capacities, coefficients)
     toolbox.register("population", tools.initRepeat, list,

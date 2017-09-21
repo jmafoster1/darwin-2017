@@ -33,6 +33,11 @@ OPTIONS:
     -F FLOAT     : used for '-a lambdalambda' - the F value for the
                    algorithm - defaults to 2.5
     -R           : turn on the repair operator for -p mkp
+    -M FLOAT     : mutation rate - expect FLOAT bits per string to flip during
+                   the mutation process. Defaults to 1. This should be longer
+                   than the bitstring
+    -D           : discard duplicates before evaluation - applies to -a plus
+                   and -a comma only
 
 ARGUMENTS:
     For each execution, the name of a file containing the problem specification
@@ -56,7 +61,7 @@ import getopt
 
 
 # Process commandline arguments here
-opts, args = getopt.getopt(sys.argv[1:], 'hp:fm:l:ce:b:S:s:a:r:AF:R')
+opts, args = getopt.getopt(sys.argv[1:], 'hp:fm:l:ce:b:S:s:a:r:AF:RM:D')
 opts = dict(opts)
 
 
@@ -77,7 +82,7 @@ algorithms = {'plus': util.theory_GA,
 solvers = {'mkp': util.MKP, 'maxsat': util.maxSat, 'ising': util.ising,
            'onemax': util.oneMax}
 
-options = {'F': 1.5}
+options = {'F': 1.5, 'mutrate': 1.0}
 
 
 ##############################
@@ -118,7 +123,7 @@ if '-F' in opts:
     except ValueError:
         print('ERROR: the -F option must be a number')
         printHelp()
-if '-R' in opts and opts['p'] != 'mkp':
+if '-R' in opts and opts['-p'] != 'mkp':
     eprint('ERROR: -R option only relevant for -p mkp option')
     printHelp()
 if '-f' in opts and opts['-a'] not in ['plus', 'comma']:
@@ -130,6 +135,8 @@ if opts['-a'] == 'lambdalambda' and ('-m' in opts or '-l' in opts):
 
 options['adjusting'] = '-A' in opts
 options['repair'] = '-R' in opts
+options['discard'] = '-D' in opts
+
 
 # mandatory options
 options['problem'] = opts['-p']
@@ -164,6 +171,12 @@ options['algorithm'] = opts['-a']
 options['fast'] = '-f' in opts
 options['crossover'] = '-c' in opts
 options['max_evals'] = 10000
+if '-M' in opts:
+    try:
+        options['mutrate'] = float(opts['-M'])
+    except ValueError:
+        eprint('ERROR: the -M option must be an number')
+        printHelp()
 if '-e' in opts:
     try:
         options['max_evals'] = int(opts['-e'])
@@ -196,12 +209,12 @@ if len(args) < 1:
 
 # Set the output folder here
 results_folder = ('results/' + options['problem'] + '/' +
-                  ('Greedy ' if options['algorithm'] == 'greedy' else '') +
+                  ('Greedy-' if options['algorithm'] == 'greedy' else '') +
                   str(options['mu']) + '+' + str(options['lambda']) +
-                  ((', ' + str(options['lambda'])) if options['algorithm'] == 'lambdalambda' else '') +
-                  ('Fast ' if options['fast'] else '') +
+                  ((',' + str(options['lambda'])) if options['algorithm'] == 'lambdalambda' else '') +
+                  ('Fast-' if options['fast'] else '') +
                   (('Tournament-' + str(options['tournsize'])) if options['selection'] == 'tournament' else '') +
-                  ('GA' if options['crossover'] else 'EA') + '/')
+                  ('GA' if (options['crossover'] or options['algorithm'] == 'greedy') else 'EA') + '/')
 if not os.path.exists(results_folder):
     os.makedirs(results_folder)
 

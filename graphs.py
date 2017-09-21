@@ -18,7 +18,7 @@ seaborn.set_style("whitegrid")
 plt.figure(figsize=(16, 8))
 plt.rcParams["font.family"] = "CMU Serif"
 
-problem = 'maxsat'
+problem = 'onemax'
 
 if problem == 'mkp':
     problem_sizes = ['100_5_0.25', '100_5_0.5', '100_5_0.75', '100_10_0.25',
@@ -49,7 +49,7 @@ for algorithm in os.listdir('results/'+problem):
                     results_file.endswith('.csv')):
                 with open(results_folder+results_file) as f:
                     data = pd.DataFrame.from_csv(f)
-                    bests.append(float(data.tail(1)['max']))
+                    bests.append(max(data['max']))
 
         avg_best = np.mean(bests)
         data_points.append((problem_size, avg_best))
