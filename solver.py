@@ -5,7 +5,7 @@ Options with a * must be provided
 OPTIONS:
     -h           : print this help message
     -p* PROBLEM  : the problem to be solved, one of either 'mkp', 'onemax',
-                   'ising', or 'maxsat'
+                   'isg', or 'maxsat'
     -f           : solve the problem using a Fast EA (or GA if -c is provided)
     -m* MU       : maintain a population of MU individuals
                    (not required for '-a greedy' or '-a lambdalambda')
@@ -79,7 +79,7 @@ algorithms = {'plus': util.theory_GA,
               'comma': util.theory_GA,
               'greedy': util.greedy,
               'lambdalambda': util.lambdalambda}
-solvers = {'mkp': util.MKP, 'maxsat': util.maxSat, 'ising': util.ising,
+solvers = {'mkp': util.MKP, 'maxsat': util.maxSat, 'isg': util.ising,
            'onemax': util.oneMax}
 
 options = {'F': 1.5, 'mutrate': 1.0}
