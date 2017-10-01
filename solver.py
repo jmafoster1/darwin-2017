@@ -25,6 +25,7 @@ OPTIONS:
                    'plus' for a (MU + LAMBDA) EA
                    'comma' for a (MU, LAMBDA) EA
                    'greedy' for a greedy (2 + 1) EA
+                   'steady' for steady state replacement
                    'lambdalambda' for a 1 + (\lambda, \lambda) algorithm
     -r SEED      : a random SEED to get the algorithm started,
                    defaults to 100
@@ -78,7 +79,8 @@ def printHelp():
 algorithms = {'plus': util.theory_GA,
               'comma': util.theory_GA,
               'greedy': util.greedy,
-              'lambdalambda': util.lambdalambda}
+              'lambdalambda': util.lambdalambda,
+              'steady': util.theory_GA}
 solvers = {'mkp': util.MKP, 'maxsat': util.maxSat, 'isg': util.ising,
            'onemax': util.oneMax}
 

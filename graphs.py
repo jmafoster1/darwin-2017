@@ -18,7 +18,7 @@ seaborn.set_style("whitegrid")
 plt.figure(figsize=(16, 8))
 plt.rcParams["font.family"] = "CMU Serif"
 
-problem = 'onemax'
+problem = 'maxsat'
 
 if problem == 'mkp':
     problem_sizes = ['100_5_0.25', '100_5_0.5', '100_5_0.75', '100_10_0.25',

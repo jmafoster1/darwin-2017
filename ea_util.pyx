@@ -48,6 +48,13 @@ def favourOffspring(parents, offspring, MU):
               list(zip(offspring, [1]*len(offspring))))
     choice.sort(key=lambda x: (fitnessValue(x[0]), x[1]), reverse=True)
     return [x[0] for x in choice[:MU]]
+
+
+def steady(population, offspring, number=1):
+    population.sort(key=lambda x: fitnessValue(x))
+    offspring.sort(key=lambda x: fitnessValue(x), reverse=True)
+
+    return population[1:] + offspring[:number]
     
 
 def fmut(int N, float BETA):
@@ -301,6 +308,7 @@ def theory_GA(options):
     # Begin the generational process
     while(eval_count < options['max_evals'] and bestFitness(population) < 1):
         gen += 1
+        nevals = 0
         if(options['fast']):
             alpha = fmut(options['N'], options['beta'])
             toolbox.register("mutate", tools.mutFlipBit, indpb=alpha/options['N'])
@@ -319,23 +327,28 @@ def theory_GA(options):
 
         for off in offspring:
             off, = toolbox.mutate(off)
-
-        #  Evaluate the individuals with an invalid fitness
-        eval_count += len(offspring)
-        
-        for individual in offspring:
             if options['problem'] == 'mkp' and options['repair']:
-                toolbox.repairKnapsack(individual)
-            individual.fitness.values = toolbox.evaluate(individual)
+                toolbox.repairKnapsack(off)
+            if options['discard'] and any([list(off) == list(p) for p in population]):
+                continue
+            else:
+                nevals += 1
+                off.fitness.values = toolbox.evaluate(off)
+        
+        eval_count += nevals
+
 
         # Select the next generation, favouring the offspring in the event
         # of equal fitness values
         if options['algorithm'] == 'comma':
             population = toolbox.select(offspring, options['mu'])
+        elif options['algorithm'] == 'steady':
+            population = steady(population, offspring)
         else:
             population = favourOffspring(population, offspring, options['mu'])
 
-        log(logbook, population, gen, len(offspring))
+        if nevals > 0:
+            log(logbook, population, gen, nevals)
 
     return population, logbook
 
