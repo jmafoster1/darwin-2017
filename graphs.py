@@ -11,6 +11,14 @@ import os
 import seaborn
 import matplotlib.pyplot as plt
 import sys
+import shutil
+
+
+def trim(data):
+    while sum(data['nevals']) > 10000:
+        data = data[:-1]
+    return data
+
 
 seaborn.set_context(rc={"lines.linewidth": 1.2})
 seaborn.set_style("whitegrid")
@@ -18,9 +26,10 @@ seaborn.set_style("whitegrid")
 plt.figure(figsize=(16, 8))
 plt.rcParams["font.family"] = "CMU Serif"
 
-problem = 'maxsat'
+problem = 'onemax'
+suffix = ''
 
-if problem == 'mkp':
+if 'mkp' in problem:
     problem_sizes = ['100_5_0.25', '100_5_0.5', '100_5_0.75', '100_10_0.25',
                      '100_10_0.5', '100_10_0.75', '100_30_0.25', '100_30_0.5',
                      '100_30_0.75', '250_5_0.25', '250_5_0.5', '250_5_0.75',
@@ -35,8 +44,8 @@ else:
                      '441', '484', '529', '576', '625', '676', '729', '784']
 
 
-for algorithm in os.listdir('results/'+problem):
-    results_folder = 'results/'+problem+'/'+algorithm+'/'
+for algorithm in os.listdir('results/'+problem+suffix):
+    results_folder = 'results/'+problem+suffix+'/'+algorithm+'/'
     if not os.path.isdir(results_folder):
         continue
     print(results_folder)
@@ -47,9 +56,13 @@ for algorithm in os.listdir('results/'+problem):
         for results_file in os.listdir(results_folder):
             if (results_file.startswith(problem+'_'+problem_size+'_') and
                     results_file.endswith('.csv')):
-                with open(results_folder+results_file) as f:
+                with open(results_folder+results_file, 'r') as f:
                     data = pd.DataFrame.from_csv(f)
+                    data.sort_values('gen')
+                    data = trim(data)
                     bests.append(max(data['max']))
+                with open(results_folder+results_file, 'w') as f:
+                    data.to_csv(path_or_buf=f)
 
         avg_best = np.mean(bests)
         data_points.append((problem_size, avg_best))
@@ -57,6 +70,7 @@ for algorithm in os.listdir('results/'+problem):
         x = [int(x[0]) for x in enumerate(data_points)]
         y = [float(x[1]) for x in data_points]
     print()
+    shutil.make_archive(results_folder, 'zip', results_folder)
 
     plt.scatter(x, y, label=algorithm, marker='x')
 
@@ -73,5 +87,5 @@ if problem == 'mkp':
 plt.tight_layout()
 
 plt.legend(frameon=True, fontsize=14, loc=3)
-plt.savefig("results/"+problem+"/avg_performance.svg")
+plt.savefig("results/"+problem+suffix+"/avg_performance.svg")
 plt.show()
