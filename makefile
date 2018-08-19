@@ -1,6 +1,7 @@
 clean:
 	rm -f -r build/
 	rm -f ea_util.cpython-36m-x86_64-linux-gnu.so
+	rm -f ea_util.c
 
 clean-cpp:
 	rm -f ea_utils.cpp

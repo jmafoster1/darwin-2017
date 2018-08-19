@@ -244,7 +244,7 @@ def lambdalambda(options):
     log(logbook, population, gen, len(population))
 
     # Begin the generational process
-    while(eval_count < options['max_evals'] and bestFitness(population) < 1):
+    while(sum(logbook.select("nevals")) < options['max_evals'] and bestFitness(population) < 1):
         nevals = 0
         gen += 1
         k = LAMBDA
@@ -283,6 +283,16 @@ def lambdalambda(options):
             LAMBDA = min([(LAMBDA*(options['F']**0.25)), options['N']])
 
         eval_count += nevals
+        
+#       This is the new code to stop LAMBDA from spiralling out of control
+        if LAMBDA >= options['N']:
+            x = toolbox.individual()
+            x.fitness.values = toolbox.evaluate(x)
+            population = [x]
+            LAMBDA = 1
+            gen += 1
+            eval_count += 1
+#       Ends here
 
         population = [x]
         log(logbook, population, gen, nevals)

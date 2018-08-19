@@ -7,7 +7,7 @@ do
 	do
 		echo -ne "$l    ${seed}\r"
 		sum=$((seed))
-		python solver.py -c -D -p mkp -m 100 -l 1 -S tournament -s 2 -a steady -r $sum -e 10000 test_data/mkp/mkp_${l}_${seed}.txt
+		python solver.py -c -D -p mkp -m 100 -M 2 -l 1 -S tournament -s 2 -a steady -r $sum -e 10000 test_data/mkp/mkp_${l}_${seed}.txt
 	done
 done
 exit

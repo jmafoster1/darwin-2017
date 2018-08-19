@@ -3,7 +3,7 @@ LENGTHS=("100_5_0.25" "100_5_0.5" "100_5_0.75" "100_10_0.25" "100_10_0.5" "100_1
 # (2 + 1) GA
 for l in ${LENGTHS[@]}
 do
-	for seed in {0..199..1}
+	for seed in {0..9..1}
 	do
 		echo -ne "$l    ${seed}\r"
 		sum=$((seed))
