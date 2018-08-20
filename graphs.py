@@ -6,16 +6,9 @@ Created on Tue Sep 12 10:40:42 2017
 @author: michael
 """
 import pandas as pd
-import os
 import matplotlib.pyplot as plt
 import sys
 import getopt
-
-
-def trim(data):
-    while sum(data['nevals'][:-1]) >= 10000:
-        data = data[:-1]
-    return data
 
 
 def avg_performance():
@@ -27,9 +20,7 @@ def avg_performance():
             results_file = problem+'_'+problem_size+'_'+str(seed)+".csv"
             with open(results_folder+results_file, 'r') as f:
                 data = pd.DataFrame.from_csv(f)
-                data.sort_values('gen')
-                data = trim(data)
-                bests += max(data['max'])
+            bests += max(data['max'])
         avg_best = bests/(seed+1)
         data_points.append((problem_size, avg_best))
 
@@ -48,9 +39,7 @@ def num_optimals():
             results_file = problem+'_'+problem_size+'_'+str(seed)+".csv"
             with open(results_folder+results_file, 'r') as f:
                 data = pd.DataFrame.from_csv(f)
-                data.sort_values('gen')
-                data = trim(data)
-                optimals += (max(data['max']) == 1)
+            optimals += (max(data['max']) == 1)
         data_points.append((problem_size, optimals))
 
     x = [int(x[0]) for x in enumerate(data_points)]
@@ -145,21 +134,22 @@ markers = {'1+1EA': 'o',
 for algorithm in algorithms:
     print("\""+algorithm+"\",")
     results_folder = 'results/'+problem+suffix+'/'+algorithm+'/'
-    if not os.path.isdir(results_folder):
-        continue
     print(results_folder)
     if '-f' in opts:
         x, y = avg_performance()
     elif '-o' in opts:
         x, y = num_optimals()
 
-    plt.scatter(x, y, label=labels[algorithm], marker=markers[algorithm], c=colours[algorithm], clip_on=False)
+    plt.scatter(x, y, label=labels[algorithm], marker=markers[algorithm],
+                c=colours[algorithm], clip_on=False)
 
 if '-f' in opts:
     plt.ylabel("average fitness after 10000 fitness evaluations", fontsize=16)
     plt.ylim(ymax=1)
+    savefile = "results/graphs/"+problem+suffix.replace("/", "-")+"-avg-performance.svg"
 elif '-o' in opts:
     plt.ylabel("number of instances where optimal solution was found", fontsize=16)
+    savefile = "results/graphs/"+problem+suffix.replace("/", "-")+"-optimal-solutions.svg"
 
 plt.yticks(fontsize=16)
 plt.xlim(-1, len(problem_sizes))
@@ -177,6 +167,4 @@ lgd = plt.legend(frameon=False, fontsize=14, bbox_to_anchor=(1, 1), loc=2, borde
 lgd.get_frame().set_facecolor('w')
 
 
-plt.savefig("results/graphs/"+problem+suffix.replace("/", "-")+"-avg-performance.svg", bbox_extra_artists=(lgd,), bbox_inches='tight')
-
-#plt.show()
+plt.savefig(savefile, bbox_extra_artists=(lgd,), bbox_inches='tight')
