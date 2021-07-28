@@ -48,6 +48,11 @@ def num_optimals():
     return x, y
 
 
+def seed2label(seed):
+    n, m, a = seed.split("_")
+    return "("+a+", "+n+", "+m+")"
+
+
 # Process commandline arguments here
 opts, args = getopt.getopt(sys.argv[1:], 'hp:s:fo')
 opts = dict(opts)
@@ -69,13 +74,15 @@ ax.spines['right'].set_color('lightgray')
 
 
 if 'mkp' in problem:
-    problem_sizes = ['100_5_0.25', '100_5_0.5', '100_5_0.75', '100_10_0.25',
-                     '100_10_0.5', '100_10_0.75', '100_30_0.25', '100_30_0.5',
-                     '100_30_0.75', '250_5_0.25', '250_5_0.5', '250_5_0.75',
-                     '250_10_0.25', '250_10_0.5', '250_10_0.75', '250_30_0.25',
-                     '250_30_0.5', '250_30_0.75', '500_5_0.25', '500_5_0.5',
-                     '500_5_0.75', '500_10_0.25', '500_10_0.5', '500_10_0.75',
-                     '500_30_0.25', '500_30_0.5', '500_30_0.75']
+    problem_sizes = ['100_5_0.25','100_10_0.25','100_30_0.25',
+                     '250_5_0.25','250_10_0.25','250_30_0.25',
+                     '500_5_0.25','500_10_0.25','500_30_0.25',
+                     '100_5_0.5', '100_10_0.5', '100_30_0.5',
+                     '250_5_0.5', '250_10_0.5', '250_30_0.5',
+                     '500_5_0.5', '500_10_0.5', '500_30_0.5',
+                     '100_5_0.75','100_10_0.75','100_30_0.75',
+                     '250_5_0.75','250_10_0.75','250_30_0.75',
+                     '500_5_0.75','500_10_0.75','500_30_0.75']
     seeds = range(10)
 
 else:
@@ -156,7 +163,7 @@ plt.xlim(-1, len(problem_sizes))
 plt.xticks(range(len(problem_sizes)), problem_sizes, fontsize=14)
 
 if problem == 'mkp':
-    plt.xticks(range(len(problem_sizes)), problem_sizes, fontsize=14, rotation='vertical')
+    plt.xticks(range(len(problem_sizes)), [seed2label(x) for x in problem_sizes], fontsize=14, rotation='vertical')
     plt.xlabel("problem instance", fontsize=16)
 else:
     plt.xlabel("problem size", fontsize=16)
