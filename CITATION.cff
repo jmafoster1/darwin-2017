@@ -8,7 +8,8 @@ authors:
     given-names: Matthew
   - family-names: O'Brien
     given-names: George
-  - family-names: Oliveto
+    orcid: https://orcid.org/0000-0001-5055-0359
+- family-names: Oliveto
     given-names: Pietro S.
     orcid: https://orcid.org/0000-0001-8164-6767
   - family-names: Pyle
